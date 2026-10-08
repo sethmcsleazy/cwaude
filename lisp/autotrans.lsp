@@ -4,7 +4,8 @@
 ;;; of the second run. All four lines must be parallel. From the end of each
 ;;; first-run line, a transition line is drawn at the set angle (measured from
 ;;; the run direction) over to the matching second-run line, and that line is
-;;; trimmed or extended to meet it. Sides that are already in line are just
+;;; trimmed or extended to meet it. A line is also drawn across the run at each
+;;; end of the transition. Sides that are already in line are just
 ;;; trimmed/extended, so offset (eccentric) transitions work too.
 ;;;
 ;;; The angle works like the FILLET radius: choose the [Angle] option at the
@@ -73,8 +74,17 @@
     (list e (autotrans:dot (mapcar '- (autotrans:2d p10) o) n) 10 p10 s10 p11 s11)
     (list e (autotrans:dot (mapcar '- (autotrans:2d p10) o) n) 11 p11 s11 p10 s10)))
 
-;; Works out the new geometry. Returns a list of actions, or an error string.
-(defun autotrans:plan (lines ang / tol o u n v run1 run2 ra rb pa off len pb plan err)
+;; Point at a given station (along u) and side offset (along n)
+(defun autotrans:at (o u n sta side z)
+  (list (+ (car o) (* (car u) sta) (* (car n) side))
+        (+ (cadr o) (* (cadr u) sta) (* (cadr n) side))
+        z))
+
+;; Works out the new geometry. Returns (mods lines) or an error string.
+;;   mods  - list of (ename group-code new-point) for the second-run lines
+;;   lines - list of (start end) for the new lines: the two angled lines plus
+;;           an end line across each end of the transition
+(defun autotrans:plan (lines ang / tol o u n v run1 run2 ra rb pa off len pb mods new pas sta-end err)
   (setq tol 1e-8
         o   (autotrans:2d (cdr (assoc 10 (entget (car lines)))))
         u   (autotrans:dir (car lines)))
@@ -108,13 +118,26 @@
                  len (/ (abs off) (/ (sin ang) (cos ang)))
                  pb  (list (+ (car pa) (* (car u) len) (* (car n) off))
                            (+ (cadr pa) (* (cadr u) len) (* (cadr n) off))
-                           (caddr pa)))
-           (if (<= (nth 6 rb) (+ (nth 6 ra) len tol))
-             (setq err "The second run is too short for the transition.")
-             (setq plan (cons (list (car rb) (nth 2 rb) pb
-                                    (if (> (abs off) tol) (list pa pb (car ra))))
-                              plan))))))))
-  (if err err plan))
+                           (caddr pa))
+                 mods    (cons (list (car rb) (nth 2 rb) pb) mods)
+                 pas     (cons pa pas)
+                 sta-end (if sta-end (max sta-end (+ (nth 6 ra) len)) (+ (nth 6 ra) len)))
+           (if (> (abs off) tol)
+             (setq new (cons (list pa pb) new))))
+         (cond
+           ((not new)
+            (setq err "Both runs are already in line - there is nothing to transition."))
+           ((or (<= (nth 6 (car run2)) (+ sta-end tol))
+                (<= (nth 6 (cadr run2)) (+ sta-end tol)))
+            (setq err "The second run is too short for the transition."))
+           (T
+            ;; end lines: across the end of the first run, and across the second
+            ;; run where the transition finishes
+            (setq new (append new
+                              (list (list (car pas) (cadr pas))
+                                    (list (autotrans:at o u n sta-end (cadr (car run2)) (caddr (car pas)))
+                                          (autotrans:at o u n sta-end (cadr (cadr run2)) (caddr (car pas)))))))))))))
+  (if err err (list mods new)))
 
 (defun c:AUTOTRANS (/ *error* doc msgs picked e plan ed props)
   (vl-load-com)
@@ -138,19 +161,15 @@
       (princ (strcat "\n" plan))
       (progn
         (vla-StartUndoMark doc)
-        (foreach act plan
-          ;; trim/extend the second-run line
-          (setq ed (entget (car act)))
-          (entmod (subst (cons (cadr act) (caddr act)) (assoc (cadr act) ed) ed))
-          ;; draw the angled line using the first-run line's properties
-          (if (nth 3 act)
-            (progn
-              (setq props (vl-remove-if-not '(lambda (x) (member (car x) '(6 8 48 62 370)))
-                                            (entget (nth 2 (nth 3 act)))))
-              (entmake (append (list '(0 . "LINE")
-                                     (cons 10 (car (nth 3 act)))
-                                     (cons 11 (cadr (nth 3 act))))
-                               props)))))
+        ;; trim/extend the second-run lines
+        (foreach m (car plan)
+          (setq ed (entget (car m)))
+          (entmod (subst (cons (cadr m) (caddr m)) (assoc (cadr m) ed) ed)))
+        ;; draw the angled lines and end lines using the first-run line's properties
+        (setq props (vl-remove-if-not '(lambda (x) (member (car x) '(6 8 48 62 370)))
+                                      (entget (car picked))))
+        (foreach l (cadr plan)
+          (entmake (append (list '(0 . "LINE") (cons 10 (car l)) (cons 11 (cadr l))) props)))
         (vla-EndUndoMark doc)
         (princ (strcat "\nTransition drawn at " (rtos (autotrans:angle) 2 2) " degrees.")))))
   (princ))
