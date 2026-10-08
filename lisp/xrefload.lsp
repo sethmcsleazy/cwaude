@@ -1,0 +1,25 @@
+;;; XREFLOAD - Reload every xref in every open drawing
+
+(defun c:XREFLOAD (/ *error* acad ok bad total)
+  (vl-load-com)
+  (defun *error* (msg)
+    (if (not (wcmatch (strcase msg) "*BREAK*,*CANCEL*,*EXIT*"))
+      (princ (strcat "\nError: " msg)))
+    (princ))
+  (setq acad (vlax-get-acad-object) total 0)
+  (vlax-for d (vla-get-Documents acad)
+    (setq ok 0 bad 0)
+    (vlax-for blk (vla-get-Blocks d)
+      (if (= :vlax-true (vla-get-IsXRef blk))
+        (if (vl-catch-all-error-p (vl-catch-all-apply 'vla-Reload (list blk)))
+          (setq bad (1+ bad))
+          (setq ok (1+ ok)))))
+    (setq total (+ total ok))
+    (princ (strcat "\n  " (vla-get-Name d) ": " (itoa ok) " xref(s) reloaded"
+                   (if (> bad 0) (strcat ", " (itoa bad) " failed (nested or missing)") ""))))
+  (vla-Regen (vla-get-ActiveDocument acad) acAllViewports)
+  (princ (strcat "\nDone - " (itoa total) " xref(s) reloaded."))
+  (princ))
+
+(princ "\nXREFLOAD loaded.")
+(princ)
