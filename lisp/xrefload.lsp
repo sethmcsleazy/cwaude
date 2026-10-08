@@ -1,24 +1,74 @@
 ;;; XREFLOAD - Reload every xref in every open drawing
+;;; A routine can only run commands in the drawing it was started from, so
+;;; XREFLOAD reloads this drawing, then switches to each other open drawing in
+;;; turn and runs -XREF Reload * there, and finally switches back here. A small
+;;; document reactor sends the reload to each drawing as it comes to the front.
 
-(defun c:XREFLOAD (/ *error* acad ok bad total)
+;; Command-line text that switches to the drawing at position idx
+(defun xrefload:goto (idx)
+  (strcat "(progn (vl-load-com) (vla-Activate (vla-Item (vla-get-Documents (vlax-get-acad-object)) "
+          (itoa idx)
+          ")) (princ))\n"))
+
+(defun xrefload:stop ()
+  (if *xrefload-reactor* (vlr-remove *xrefload-reactor*))
+  (setq *xrefload-reactor* nil
+        *xrefload-queue*   nil))
+
+;; Runs every time a drawing becomes current
+(defun xrefload:onactivate (reactor args / doc hit)
+  (setq doc (car args))
+  (cond
+    ;; a drawing still waiting: reload it there, then move on to the next one
+    ((setq hit (vl-some '(lambda (x) (if (equal (cdr x) doc) x)) *xrefload-queue*))
+     (setq *xrefload-queue* (vl-remove hit *xrefload-queue*)
+           *xrefload-count* (1+ *xrefload-count*))
+     (vla-SendCommand doc
+                      (strcat "_.-XREF _Reload * "
+                              (xrefload:goto (if *xrefload-queue*
+                                               (car (car *xrefload-queue*))
+                                               (car *xrefload-home*))))))
+    ;; back in the starting drawing with nothing left to do
+    ((and (null *xrefload-queue*) (equal doc (cdr *xrefload-home*)))
+     (xrefload:stop)
+     (princ (strcat "\nXREFLOAD: xrefs reloaded in " (itoa *xrefload-count*) " drawing(s).\n"))
+     (princ))))
+
+(defun c:XREFLOAD (/ *error* acad home i queue oldecho)
   (vl-load-com)
+  (setq acad    (vlax-get-acad-object)
+        home    (vla-get-ActiveDocument acad)
+        oldecho (getvar "CMDECHO")
+        i       0)
   (defun *error* (msg)
+    (setvar "CMDECHO" oldecho)
     (if (not (wcmatch (strcase msg) "*BREAK*,*CANCEL*,*EXIT*"))
       (princ (strcat "\nError: " msg)))
     (princ))
-  (setq acad (vlax-get-acad-object) total 0)
+  (xrefload:stop)
   (vlax-for d (vla-get-Documents acad)
-    (setq ok 0 bad 0)
-    (vlax-for blk (vla-get-Blocks d)
-      (if (= :vlax-true (vla-get-IsXRef blk))
-        (if (vl-catch-all-error-p (vl-catch-all-apply 'vla-Reload (list blk)))
-          (setq bad (1+ bad))
-          (setq ok (1+ ok)))))
-    (setq total (+ total ok))
-    (princ (strcat "\n  " (vla-get-Name d) ": " (itoa ok) " xref(s) reloaded"
-                   (if (> bad 0) (strcat ", " (itoa bad) " failed (nested or missing)") ""))))
-  (vla-Regen (vla-get-ActiveDocument acad) acAllViewports)
-  (princ (strcat "\nDone - " (itoa total) " xref(s) reloaded."))
+    (if (equal d home)
+      (setq *xrefload-home* (cons i d))
+      (setq queue (cons (cons i d) queue)))
+    (setq i (1+ i)))
+  ;; this drawing
+  (setvar "CMDECHO" 0)
+  (command "_.-XREF" "_Reload" "*")
+  (setvar "CMDECHO" oldecho)
+  (if queue
+    (progn
+      (setq *xrefload-queue*   (reverse queue)
+            *xrefload-count*   1
+            *xrefload-reactor* (vlr-docmanager-reactor
+                                 nil
+                                 '((:vlr-documentBecameCurrent . xrefload:onactivate))))
+      ;; the reactor must fire while the other drawings are in front
+      (vlr-set-notification *xrefload-reactor* 'all-documents)
+      (princ (strcat "\nXrefs reloaded here. Switching through " (itoa (length queue))
+                     " other open drawing(s) to reload theirs..."))
+      ;; switch after this command has finished
+      (vla-SendCommand home (xrefload:goto (car (car *xrefload-queue*)))))
+    (princ "\nXrefs reloaded (this is the only open drawing)."))
   (princ))
 
 (princ "\nXREFLOAD loaded.")
