@@ -19,7 +19,7 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 | `DOUBLEOFFSET` | `lisp/doubleoffset.lsp` | Enter a total width; each picked object is offset half that distance to both sides. Width is remembered for the session. |
 | `AUTOTRANS` | `lisp/autotrans.lsp` | Pick 2 parallel lines of the first run, then 2 of the second run. Draws angled transition lines from the end of the first run, trims/extends the second run to meet them, and draws a line across the run at each end of the transition. Angle defaults to 30 deg; change it with the **[Angle]** option at the first prompt (remembered, like FILLET radius). |
 | `FLOWTOTAL` | `lisp/flowtotal.lsp` | Adds up the first number in each selected TEXT/MTEXT/MLEADER. Shows a running total and keeps prompting so you can add more; already-counted text is ignored. Enter to finish and optionally place the total. |
-| `MTFORMAT` | `lisp/mtformat.lsp` | For each selected MTEXT, finds the closed border around it, sets Middle Center justification, centers it, and sets its width so the grips sit on the borders. Border must be on screen. |
+| `MTFORMAT` | `lisp/mtformat.lsp` | For each selected MTEXT, finds the closed border around it, sets Middle Center justification, centers it, and sets its defined width and height to the border size so the grips sit on the border corners. Border must be on screen. |
 
 ## Measuring / counting
 

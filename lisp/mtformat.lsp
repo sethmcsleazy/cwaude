@@ -1,9 +1,19 @@
-;;; MTFORMAT - Center MTEXT inside the border around it and stretch its width to fit
+;;; MTFORMAT - Center MTEXT inside the border around it and size its frame to fit
 ;;; For each selected MTEXT, finds the closed area it sits in (a box, a table
 ;;; cell made of lines, a title block cell, etc.), sets the justification to
-;;; Middle Center, moves it to the center of that area, and sets the text width
-;;; so the grips sit on the left and right borders.
+;;; Middle Center, moves it to the center of that area, and sets the text's
+;;; defined width and height to the border size so the grips sit on the
+;;; border's corners.
 ;;; The border must be visible on screen (same limitation as BOUNDARY/HATCH).
+
+;; Set an MTEXT's defined height (DXF 46), adding the group after 41 if missing
+(defun mtformat:setheight (e h / ed out)
+  (setq ed (entget e))
+  (if (assoc 46 ed)
+    (setq out (subst (cons 46 h) (assoc 46 ed) ed))
+    (foreach x ed
+      (setq out (if (= 41 (car x)) (cons (cons 46 h) (cons x out)) (cons x out)))))
+  (entmod (if (assoc 46 ed) out (reverse out))))
 
 (defun mtformat:bbox (obj / mn mx)
   (vla-GetBoundingBox obj 'mn 'mx)
@@ -26,7 +36,7 @@
   (foreach x new (entdel x))
   box)
 
-(defun c:MTFORMAT (/ *error* doc ss i obj box ins ctr border width ok fail)
+(defun c:MTFORMAT (/ *error* doc ss i obj box ins ctr border width height tmp ok fail)
   (vl-load-com)
   (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
   (defun *error* (msg)
@@ -50,13 +60,15 @@
                   ctr   (list (/ (+ (car (car border)) (car (cadr border))) 2.0)
                               (/ (+ (cadr (car border)) (cadr (cadr border))) 2.0)
                               (caddr ins))
-                  ;; rotated 90/270 text spans the border's height instead
-                  width (if (< (abs (sin (vla-get-Rotation obj))) 0.7071)
-                          (- (car (cadr border)) (car (car border)))
-                          (- (cadr (cadr border)) (cadr (car border)))))
+                  width (- (car (cadr border)) (car (car border)))
+                  height (- (cadr (cadr border)) (cadr (car border))))
+            ;; rotated 90/270 text: width runs along the border's height
+            (if (>= (abs (sin (vla-get-Rotation obj))) 0.7071)
+              (setq tmp width width height height tmp))
             (vla-put-AttachmentPoint obj acAttachmentPointMiddleCenter)
             (vla-put-InsertionPoint obj (vlax-3d-point ctr))
             (vla-put-Width obj width)
+            (mtformat:setheight (vlax-vla-object->ename obj) height)
             (setq ok (1+ ok)))
           (setq fail (1+ fail))))
       (vla-EndUndoMark doc)
