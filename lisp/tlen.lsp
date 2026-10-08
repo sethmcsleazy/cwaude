@@ -8,9 +8,14 @@
       (princ (strcat "\nError: " msg)))
     (princ))
   (prompt "\nSelect objects to measure: ")
-  (if (setq ss (ssget '((0 . "LINE,ARC,CIRCLE,LWPOLYLINE,POLYLINE,SPLINE,ELLIPSE")
-                        ;; skip 3D meshes / polyface meshes
-                        (-4 . "<NOT") (-4 . "&") (70 . 80) (-4 . "NOT>"))))
+  (if (setq ss (ssget '((-4 . "<OR")
+                          (0 . "LINE,ARC,CIRCLE,LWPOLYLINE,SPLINE,ELLIPSE")
+                          (-4 . "<AND")
+                            (0 . "POLYLINE")
+                            ;; skip 3D meshes / polyface meshes
+                            (-4 . "<NOT") (-4 . "&") (70 . 80) (-4 . "NOT>")
+                          (-4 . "AND>")
+                        (-4 . "OR>"))))
     (progn
       (setq total 0.0 i 0)
       (repeat (sslength ss)

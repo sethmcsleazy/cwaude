@@ -16,18 +16,18 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 
 | Command | File | What it does |
 |---|---|---|
-| `DOUBLEOFFSET` | `lisp/doubleoffset.lsp` | Enter a total width; each picked object is offset half that distance to both sides. Width is remembered for the session. |
+| `DOUBLEOFFSET` | `lisp/doubleoffset.lsp` | Enter a total width; each picked object is offset half that distance to both sides. Width is remembered for the session, in every drawing. |
 | `AUTOTRANS` | `lisp/autotrans.lsp` | Pick 2 parallel lines of the first run, then 2 of the second run. Draws angled transition lines from the end of the first run, trims/extends the second run to meet them, and draws a line across the run at each end of the transition. Angle defaults to 30 deg; change it with the **[Angle]** option at the first prompt (remembered, like FILLET radius). |
-| `FLOWTOTAL` | `lisp/flowtotal.lsp` | Adds up the first number in each selected TEXT/MTEXT/MLEADER. Shows a running total and keeps prompting so you can add more; already-counted text is ignored. Enter to finish and optionally place the total. |
-| `MTFORMAT` | `lisp/mtformat.lsp` | For each selected MTEXT, finds the closed border around it, sets Middle Center justification, centers it, and sets its defined width and height to the border size so the grips sit on the border corners. Border must be on screen. |
+| `FLOWTOTAL` | `lisp/flowtotal.lsp` | Adds up the first number in each selected TEXT/MTEXT/MLEADER (handles `1,250`, `3/4`, `1 1/2`, stacked fractions, and tags like `CHW-450`). Shows a running total and keeps prompting so you can add more; already-counted text is ignored. Enter to finish and optionally place the total. |
+| `MTFORMAT` | `lisp/mtformat.lsp` | For each selected MTEXT, finds the closed border around it, sets Middle Center justification (paragraphs too), centers it, and sets its defined width and height to the border size so the grips sit on the border corners. Works for rotated text and borders. Border must be on screen; text on locked layers is skipped. |
 
 ## Measuring / counting
 
 | Command | File | What it does |
 |---|---|---|
 | `TLEN` | `lisp/tlen.lsp` | Total length of selected lines, arcs, circles, polylines, splines, ellipses |
-| `TAREA` | `lisp/tarea.lsp` | Total area of selected closed polylines, circles, ellipses, splines, regions, hatches |
-| `BCOUNT` | `lisp/bcount.lsp` | Count block references by name (dynamic blocks grouped by effective name); Enter = whole drawing |
+| `TAREA` | `lisp/tarea.lsp` | Total area of selected closed polylines, circles, ellipses, splines, regions, hatches (open curves skipped; sq ft shown in Architectural/Engineering units) |
+| `BLKCOUNT` | `lisp/blkcount.lsp` | Count block references by name (dynamic blocks grouped by effective name, MINSERT arrays count every copy). Choose Select or press Enter for the whole drawing. Named so it doesn't clash with Express Tools `BCOUNT`. |
 | `NUMINC` | `lisp/numinc.lsp` | Click to place incrementing numbers with optional prefix/suffix |
 
 ## Loading

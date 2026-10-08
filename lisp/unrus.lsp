@@ -1,7 +1,8 @@
 ;;; UNRUS - Thaw every layer in every viewport on every layout (clears all VP freezes)
-;;; Global layer freeze/thaw is not touched.
+;;; Global layer freeze/thaw is not touched. Layouts that have no floating
+;;; viewports (including ones never opened) are skipped, so nothing is set up.
 
-(defun c:UNRUS (/ *error* doc oldtab oldecho)
+(defun c:UNRUS (/ *error* doc oldtab oldecho cnt n)
   (vl-load-com)
   (setq doc     (vla-get-ActiveDocument (vlax-get-acad-object))
         oldtab  (getvar "CTAB")
@@ -15,13 +16,21 @@
     (princ))
   (vla-StartUndoMark doc)
   (setvar "CMDECHO" 0)
+  (setq cnt 0)
   (foreach lay (layoutlist)
-    (setvar "CTAB" lay)
-    (command "_.VPLAYER" "_Thaw" "*" "_All" ""))
+    ;; viewports in the layout: 0 = never opened, 1 = paper space viewport only
+    (setq n 0)
+    (vlax-for o (vla-get-Block (vla-Item (vla-get-Layouts doc) lay))
+      (if (= "AcDbViewport" (vla-get-ObjectName o)) (setq n (1+ n))))
+    (if (> n 1)
+      (progn
+        (setvar "CTAB" lay)
+        (command "_.VPLAYER" "_Thaw" "*" "_All" "")
+        (setq cnt (1+ cnt)))))
   (setvar "CTAB" oldtab)
   (setvar "CMDECHO" oldecho)
   (vla-EndUndoMark doc)
-  (princ (strcat "\nThawed all viewport-frozen layers on " (itoa (length (layoutlist))) " layout(s)."))
+  (princ (strcat "\nThawed all viewport-frozen layers on " (itoa cnt) " layout(s)."))
   (princ))
 
 (princ "\nUNRUS loaded.")

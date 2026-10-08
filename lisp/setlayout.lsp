@@ -21,9 +21,9 @@
   (setq doc     (vla-get-ActiveDocument (vlax-get-acad-object))
         layouts (vla-get-Layouts doc)
         name    (setlayout:clean (vl-filename-base (getvar "DWGNAME"))))
-  (if (= 0 (getvar "DWGTITLED"))
-    (princ "\nNote: drawing has not been saved yet, using its temporary name."))
   (cond
+    ((= 0 (getvar "DWGTITLED"))
+     (princ "\nDrawing has not been saved yet - save it first so the layout can take its file name."))
     ((= name "")
      (princ "\nFile name has no usable characters for a layout name."))
     ((= (strcase name) "MODEL")

@@ -44,6 +44,9 @@
 
 (defun autotrans:2d (p) (list (car p) (cadr p)))
 
+(defun autotrans:locked (e)
+  (= 4 (logand 4 (cdr (assoc 70 (tblsearch "LAYER" (cdr (assoc 8 (entget e)))))))))
+
 (defun autotrans:unit (v / len)
   (setq len (distance '(0.0 0.0) v))
   (if (> len 1e-12) (mapcar '(lambda (x) (/ x len)) v)))
@@ -79,6 +82,12 @@
   (list (+ (car o) (* (car u) sta) (* (car n) side))
         (+ (cadr o) (* (cadr u) sta) (* (cadr n) side))
         z))
+
+;; Z of a second-run record r at station sta (interpolated along the line)
+(defun autotrans:zat (r sta)
+  (+ (caddr (nth 3 r))
+     (* (- (caddr (nth 5 r)) (caddr (nth 3 r)))
+        (/ (- sta (nth 4 r)) (- (nth 6 r) (nth 4 r))))))
 
 ;; Works out the new geometry. Returns (mods lines) or an error string.
 ;;   mods  - list of (ename group-code new-point) for the second-run lines
@@ -118,7 +127,7 @@
                  len (/ (abs off) (/ (sin ang) (cos ang)))
                  pb  (list (+ (car pa) (* (car u) len) (* (car n) off))
                            (+ (cadr pa) (* (cadr u) len) (* (cadr n) off))
-                           (caddr pa))
+                           (autotrans:zat rb (+ (nth 6 ra) len)))
                  mods    (cons (list (car rb) (nth 2 rb) pb) mods)
                  pas     (cons pa pas)
                  sta-end (if sta-end (max sta-end (+ (nth 6 ra) len)) (+ (nth 6 ra) len)))
@@ -135,8 +144,8 @@
             ;; run where the transition finishes
             (setq new (append new
                               (list (list (car pas) (cadr pas))
-                                    (list (autotrans:at o u n sta-end (cadr (car run2)) (caddr (car pas)))
-                                          (autotrans:at o u n sta-end (cadr (cadr run2)) (caddr (car pas)))))))))))))
+                                    (list (autotrans:at o u n sta-end (cadr (car run2)) (autotrans:zat (car run2) sta-end))
+                                          (autotrans:at o u n sta-end (cadr (cadr run2)) (autotrans:zat (cadr run2) sta-end))))))))))))
   (if err err (list mods new)))
 
 (defun c:AUTOTRANS (/ *error* doc msgs picked e plan ed props)
@@ -157,7 +166,9 @@
           msgs   (cdr msgs)))
   (foreach x picked (redraw x 4))
   (if (= 4 (length picked))
-    (if (= 'STR (type (setq plan (autotrans:plan picked (* pi (/ (autotrans:angle) 180.0))))))
+    (if (= 'STR (type (setq plan (if (vl-some 'autotrans:locked (cddr picked))
+                                   "A second-run line is on a locked layer - unlock it and try again."
+                                   (autotrans:plan picked (* pi (/ (autotrans:angle) 180.0)))))))
       (princ (strcat "\n" plan))
       (progn
         (vla-StartUndoMark doc)
@@ -166,7 +177,7 @@
           (setq ed (entget (car m)))
           (entmod (subst (cons (cadr m) (caddr m)) (assoc (cadr m) ed) ed)))
         ;; draw the angled lines and end lines using the first-run line's properties
-        (setq props (vl-remove-if-not '(lambda (x) (member (car x) '(6 8 48 62 370)))
+        (setq props (vl-remove-if-not '(lambda (x) (member (car x) '(6 8 39 48 62 370 420 430 440)))
                                       (entget (car picked))))
         (foreach l (cadr plan)
           (entmake (append (list '(0 . "LINE") (cons 10 (car l)) (cons 11 (cadr l))) props)))
