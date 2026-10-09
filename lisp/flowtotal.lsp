@@ -51,7 +51,7 @@
   d)
 
 ;; Returns (value . decimal-places) for the first number in s, or nil
-(defun flowtotal:number (s / i n c start str dot dec neg val num den)
+(defun flowtotal:number (s / i n c start str dot dec neg val num den grp)
   (setq i 1 n (strlen s))
   (while (and (<= i n) (not start))
     (setq c (substr s i 1))
@@ -73,7 +73,12 @@
                     (or (flowtotal:digit-p c)
                         (and (member c '("." ",")) (not dot) (flowtotal:digit-p (substr s (1+ i) 1))))))
         (cond
-          ((and (= c ",") (wcmatch (substr s (1+ i) 4) "###,###[~0-9]")))  ; 1,250 thousands separator
+          ;; 1,250 thousands separator: groups of 3 after 1-3 leading digits
+          ;; (not 0,125 or 1250,125 - those are decimal commas)
+          ((and (= c ",")
+                (wcmatch (substr s (1+ i) 4) "###,###[~0-9]")
+                (or grp (and (<= (strlen str) 3) (/= "0" (substr str 1 1)))))
+           (setq grp T))
           ((member c '("." ",")) (setq dot T str (strcat str ".")))          ; 1.5 or 1,5 decimal
           (T (setq str (strcat str c))
              (if dot (setq dec (1+ dec)))))
@@ -115,7 +120,7 @@
     (setq h (/ h (getvar "CANNOSCALEVALUE"))))
   h)
 
-(defun c:FLOWTOTAL (/ *error* ss i e txt r used total dec cnt skip pt zdir)
+(defun c:FLOWTOTAL (/ *error* ss i e txt r used total dec cnt skip pt zdir sty)
   (vl-load-com)
   (defun *error* (msg)
     (foreach x used (redraw x 4))
@@ -153,12 +158,16 @@
                (setq pt (getpoint "\nText location: ")))
         (progn
           ;; place it flat in the current UCS, like the TEXT command
-          (setq zdir (trans '(0 0 1) 1 0 T))
+          (setq zdir (trans '(0 0 1) 1 0 T)
+                sty  (tblsearch "STYLE" (getvar "TEXTSTYLE")))
           (entmake (list '(0 . "TEXT")
                          (cons 10 (trans pt 1 zdir))
                          (cons 40 (flowtotal:height))
                          (cons 1 (flowtotal:fmt total dec))
                          (cons 7 (getvar "TEXTSTYLE"))
+                         (cons 41 (cdr (assoc 41 sty)))     ; style width factor
+                         (cons 51 (cdr (assoc 50 sty)))     ; style oblique angle
+                         (cons 71 (cdr (assoc 71 sty)))     ; backward / upside down
                          (cons 50 (angle '(0 0 0) (trans (getvar "UCSXDIR") 0 zdir T)))
                          (cons 210 zdir)))))))
   (princ))

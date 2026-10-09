@@ -19,9 +19,20 @@
 (defun xrefload:onactivate (reactor args / doc hit)
   (setq doc (car args))
   (cond
+    ;; the chain stalled (no switch for a minute) or you came back to the
+    ;; starting drawing early: stop listening instead of acting later
+    ((or (> (- (getvar "MILLISECS") *xrefload-time*) 60000)
+         (and *xrefload-queue* (equal doc (cdr *xrefload-home*))))
+     (princ (strcat "\nXREFLOAD: stopped before reaching "
+                    (apply 'strcat (mapcar '(lambda (x) (strcat (vla-get-Name (cdr x)) " "))
+                                           *xrefload-queue*))
+                    "- run XREFLOAD again for those.\n"))
+     (xrefload:stop)
+     (princ))
     ;; a drawing still waiting: reload it there, then move on to the next one
     ((setq hit (vl-some '(lambda (x) (if (equal (cdr x) doc) x)) *xrefload-queue*))
-     (setq *xrefload-queue* (vl-remove hit *xrefload-queue*)
+     (setq *xrefload-time*  (getvar "MILLISECS")
+           *xrefload-queue* (vl-remove hit *xrefload-queue*)
            *xrefload-count* (1+ *xrefload-count*))
      (vla-SendCommand doc
                       (strcat "_.-XREF _Reload * "
@@ -64,6 +75,7 @@
                                  '((:vlr-documentBecameCurrent . xrefload:onactivate))))
       ;; the reactor must fire while the other drawings are in front
       (vlr-set-notification *xrefload-reactor* 'all-documents)
+      (setq *xrefload-time* (getvar "MILLISECS"))
       (princ (strcat "\nXrefs reloaded here. Switching through " (itoa (length queue))
                      " other open drawing(s) to reload theirs..."))
       ;; switch after this command has finished

@@ -85,8 +85,19 @@
 (defun setupall:onactivate (reactor args / doc hit)
   (setq doc (car args))
   (cond
+    ;; the chain stalled (no switch for a minute) or you came back to the
+    ;; starting drawing early: stop listening instead of acting later
+    ((or (> (- (getvar "MILLISECS") *setupall-time*) 60000)
+         (and *setupall-queue* (equal doc (cdr *setupall-home*))))
+     (princ (strcat "\nSETUPALL: stopped before reaching "
+                    (apply 'strcat (mapcar '(lambda (x) (strcat (vla-get-Name (cdr x)) " "))
+                                           *setupall-queue*))
+                    "- run SETUPALL again for those.\n"))
+     (setupall:stop)
+     (princ))
     ((setq hit (vl-some '(lambda (x) (if (equal (cdr x) doc) x)) *setupall-queue*))
-     (setq *setupall-queue* (vl-remove hit *setupall-queue*)
+     (setq *setupall-time*  (getvar "MILLISECS")
+           *setupall-queue* (vl-remove hit *setupall-queue*)
            *setupall-count* (1+ *setupall-count*))
      (vla-SendCommand doc (setupall:remote (if *setupall-queue*
                                              (car (car *setupall-queue*))
@@ -163,6 +174,7 @@
                                          nil
                                          '((:vlr-documentBecameCurrent . setupall:onactivate))))
               (vlr-set-notification *setupall-reactor* 'all-documents)
+              (setq *setupall-time* (getvar "MILLISECS"))
               (princ (strcat "\nSwitching through " (itoa (length queue))
                              " other open drawing(s) to set the page setup there..."))
               (vla-SendCommand doc (setupall:goto (car (car *setupall-queue*))))))))))

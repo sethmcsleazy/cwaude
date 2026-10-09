@@ -8,28 +8,41 @@
 ;;; Text on locked layers is skipped.
 
 ;; Set an MTEXT's defined height (DXF 46), adding the group after 41 if missing
-(defun mtformat:setheight (e h / ed out)
-  (setq ed (entget e))
+;; Set an MTEXT's defined height (DXF 46), adding the group after 41 if
+;; missing. entmod writes the contents back as plain text, so any fields are
+;; restored from their field codes afterwards.
+(defun mtformat:setheight (obj h / e ed out fc)
+  (setq e  (vlax-vla-object->ename obj)
+        fc (vla-FieldCode obj)
+        ed (entget e))
   (if (assoc 46 ed)
     (setq out (subst (cons 46 h) (assoc 46 ed) ed))
     (foreach x ed
       (setq out (if (= 41 (car x)) (cons (cons 46 h) (cons x out)) (cons x out)))))
-  (entmod (if (assoc 46 ed) out (reverse out))))
+  (entmod (if (assoc 46 ed) out (reverse out)))
+  (if (/= fc (vla-get-TextString obj))
+    (vla-put-TextString obj fc)))
 
 (defun mtformat:bbox (obj / mn mx)
   (vla-GetBoundingBox obj 'mn 'mx)
   (list (vlax-safearray->list mn) (vlax-safearray->list mx)))
 
 ;; Force every explicit paragraph alignment code (\p...;) to centered
-(defun mtformat:centerpara (s / i j seg)
+;; Force every explicit paragraph alignment code (\p...;) to centered.
+;; A \p preceded by an odd number of backslashes is typed text, not a code.
+(defun mtformat:centerpara (s / i j k seg)
   (setq i 0)
-  (while (and (setq i (vl-string-search "\\p" s i))
-              (setq j (vl-string-search ";" s i)))
-    (setq seg (substr s (1+ i) (- (1+ j) i)))
-    (foreach a '("ql" "qr" "qj" "qd")
-      (setq seg (vl-string-subst "qc" a seg)))
-    (setq s (strcat (substr s 1 i) seg (substr s (+ j 2)))
-          i (1+ j)))
+  (while (setq i (vl-string-search "\\p" s i))
+    (setq k 0)
+    (while (and (> (- i k) 0) (= "\\" (substr s (- i k) 1))) (setq k (1+ k)))
+    (if (and (= 0 (rem k 2)) (setq j (vl-string-search ";" s i)))
+      (progn
+        (setq seg (substr s (1+ i) (- (1+ j) i)))
+        (foreach a '("ql" "qr" "qj" "qd")
+          (setq seg (vl-string-subst "qc" a seg)))
+        (setq s (strcat (substr s 1 i) seg (substr s (+ j 2)))
+              i (1+ j)))
+      (setq i (1+ i))))
   s)
 
 ;; Finds the closed area around pt (WCS) and measures it along the text
@@ -107,7 +120,7 @@
             (if (/= str str2) (vla-put-TextString obj str2))
             (vla-put-InsertionPoint obj (vlax-3d-point ctr))
             (vla-put-Width obj (cadr border))
-            (mtformat:setheight (vlax-vla-object->ename obj) (caddr border))
+            (mtformat:setheight obj (caddr border))
             (setq ok (1+ ok)))
           (setq fail (1+ fail))))
       (if relock (vla-put-Lock clay :vlax-true))
