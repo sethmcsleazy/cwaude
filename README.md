@@ -7,7 +7,7 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 | Command | File | What it does |
 |---|---|---|
 | `SETLAYOUT` | `lisp/setlayout.lsp` | Renames the current layout to the drawing's file name, dropping characters layouts can't use (`< > / \ " : ; ? * \| , = `` ` ``). From the Model tab it renames the only layout. |
-| `SETUPALL` | `lisp/setupall.lsp` | Pick a named page setup from this drawing; it's copied into every open drawing, applied to all their layouts and set as each layout's current page setup (or just this drawing's layouts with the *Current* option). Drawings aren't saved for you. |
+| `SETUPALL` | `lisp/setupall.lsp` | Pick a named page setup from this drawing; it's copied into every open drawing and made the current page setup on every layout (via `-PLOT` → save changes, don't plot), switching through the open drawings like XREFLOAD. *Current* limits it to this drawing. Drawings aren't saved for you. |
 | `XREFLOAD` | `lisp/xrefload.lsp` | Reloads every xref in every open drawing: reloads this one, switches through each other open drawing running `-XREF Reload *`, then switches back. |
 | `UNRUS` | `lisp/unrus.lsp` | Thaws every viewport-frozen layer in every viewport on every layout. |
 | `EXDWG` | `lisp/exdwg.lsp` | Opens Windows Explorer at the drawing's folder with the file selected. |

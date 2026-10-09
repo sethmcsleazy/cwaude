@@ -116,7 +116,7 @@
       (setq undo nil)
       (princ (strcat "\n" (itoa ok) " MTEXT centered"
                      (if (> fail 0)
-                       (strcat ", " (itoa fail) " skipped (no closed border found - make sure it is on screen)")
+                       (strcat ", " (itoa fail) " skipped (no closed border found - AutoCAD circles any gap in red; REDRAW clears them. The border must also be on screen)")
                        "")))))
   (princ))
 
