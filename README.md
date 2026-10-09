@@ -21,6 +21,12 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 | `FLOWTOTAL` | `lisp/flowtotal.lsp` | Adds up the first number in each selected TEXT/MTEXT/MLEADER (handles `1,250`, `3/4`, `1 1/2`, stacked fractions, and tags like `CHW-450`). Shows a running total and keeps prompting so you can add more; already-counted text is ignored. Enter to finish and optionally place the total. |
 | `MTFORMAT` | `lisp/mtformat.lsp` | For each selected MTEXT, finds the closed border around it, sets Middle Center justification (paragraphs too), centers it, and sets its defined width and height to the border size so the grips sit on the border corners. Works for rotated text and borders. Border must be on screen; text on locked layers is skipped. |
 
+## Equipment blocks
+
+| Command | File | What it does |
+|---|---|---|
+| `AHU` / `AHUEDIT` | `lisp/ahu.lsp` | Parametric air handling unit. A dialog sets unit length/width/height and the SA, RA and OA openings (location: top, bottom, front, back, left end, right end; length, width and two edge offsets each). Builds a plan block and a separate elevation block per unit tag; `AHUEDIT` on either view changes the values and redraws both everywhere. |
+
 ## Measuring / counting
 
 | Command | File | What it does |
