@@ -11,25 +11,46 @@
 
 ;; The per-drawing step, kept as data so it can also be written to a temp file
 ;; and loaded in the other drawings (each drawing has its own LISP variables).
+;; Each layout is checked afterwards; if the page setup did not take, it is
+;; tried once more, and any layout that still failed is reported (with the
+;; prompts AutoCAD showed) on the session blackboard for the final summary.
 (setq *setupall-here-src*
-  '(defun setupall:here (name / echo n p k)
+  '(defun setupall:here (name / echo n bad lays try seen p k cur sub)
      (setq echo (getvar "CMDECHO") n 0)
      (setvar "CMDECHO" 1)                    ; prompts must echo for LASTPROMPT
+     (setq lays (vla-get-Layouts (vla-get-ActiveDocument (vlax-get-acad-object))))
      (foreach lay (layoutlist)
-       (command "_.-PLOT" "_N" lay name)
-       ;; answer the rest by reading each prompt, since they vary by plotter
-       (setq k 0)
-       (while (and (> (getvar "CMDACTIVE") 0) (< (setq k (1+ k)) 20))
-         (setq p (strcase (getvar "LASTPROMPT")))
-         (cond
-           ((wcmatch p "*SAVE CHANGES*") (command "_Y"))
-           ((wcmatch p "*PROCEED WITH PLOT*") (command "_N"))
-           ((wcmatch p "*WRITE THE PLOT TO A FILE*") (command "_N"))
-           (T (command ""))))
-       (if (> (getvar "CMDACTIVE") 0) (command))
-       (setq n (1+ n)))
+       (setq try 0 cur nil)
+       (while (and (< try 2) (/= cur name))
+         (setq try (1+ try) seen nil k 0)
+         (command "_.-PLOT" "_N" lay name)
+         ;; answer the rest by reading each prompt, since they vary by plotter
+         (while (and (> (getvar "CMDACTIVE") 0) (< (setq k (1+ k)) 20))
+           (setq p    (strcase (getvar "LASTPROMPT"))
+                 seen (cons (getvar "LASTPROMPT") seen))
+           (cond
+             ((wcmatch p "*SAVE CHANGES*") (command "_Y"))
+             ((wcmatch p "*PROCEED WITH PLOT*") (command "_N"))
+             ((wcmatch p "*WRITE THE PLOT TO A FILE*") (command "_N"))
+             ;; second try: any other Yes/No question (e.g. after a warning) gets Yes
+             ((and (= try 2) (wcmatch p "*`[YES/NO`]*")) (command "_Y"))
+             (T (command ""))))
+         (if (> (getvar "CMDACTIVE") 0) (command))
+         ;; read back the layout's current page setup name
+         (setq cur nil sub nil)
+         (foreach x (entget (vlax-vla-object->ename (vla-Item lays lay)))
+           (if (and (not cur) (= sub "AcDbPlotSettings") (= (car x) 1)) (setq cur (cdr x)))
+           (if (= (car x) 100) (setq sub (cdr x)))))
+       (if (= cur name)
+         (setq n (1+ n))
+         (setq bad (cons (strcat (getvar "DWGNAME") " / " lay " - last prompts: "
+                                 (apply 'strcat (mapcar '(lambda (s) (strcat "[" s "] "))
+                                                        (reverse seen))))
+                         bad))))
      (setvar "CMDECHO" echo)
-     (princ (strcat "\nSETUPALL: \"" name "\" set current on " (itoa n) " layout(s)."))
+     (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
+     (princ (strcat "\nSETUPALL: \"" name "\" set current on " (itoa n) " of "
+                    (itoa (length (layoutlist))) " layout(s)."))
      n))
 (eval *setupall-here-src*)
 
@@ -72,9 +93,17 @@
                                              (car *setupall-home*)))))
     ((and (null *setupall-queue*) (equal doc (cdr *setupall-home*)))
      (setupall:stop)
-     (princ (strcat "\nSETUPALL: \"" *setupall-name* "\" set current in "
-                    (itoa *setupall-count*) " drawing(s).\n"))
-     (princ))))
+     (setupall:summary))))
+
+;; Final report, including any layouts that did not take the page setup
+(defun setupall:summary (/ fails)
+  (setq fails (vl-bb-ref '*setupall-fail*))
+  (princ (strcat "\nSETUPALL: \"" *setupall-name* "\" processed in "
+                 (itoa *setupall-count*) " drawing(s)"
+                 (if fails (strcat ", " (itoa (length fails)) " layout(s) FAILED:") ".")))
+  (foreach f fails (princ (strcat "\n  " f)))
+  (princ "\n")
+  (princ))
 
 (defun c:SETUPALL (/ *error* acad doc names i num src scope queue f res)
   (vl-load-com)
@@ -118,7 +147,10 @@
                   (setq queue (cons (cons i d) queue)))))
             (setq i (1+ i)))
           ;; this drawing
+          (vl-bb-set '*setupall-fail* nil)
+          (setq *setupall-count* 1)
           (setupall:here *setupall-name*)
+          (if (not queue) (setupall:summary))
           (if queue
             (progn
               ;; the other drawings load the per-drawing step from a temp file
@@ -127,7 +159,6 @@
               (write-line (vl-prin1-to-string *setupall-here-src*) f)
               (close f)
               (setq *setupall-queue*   (reverse queue)
-                    *setupall-count*   1
                     *setupall-reactor* (vlr-docmanager-reactor
                                          nil
                                          '((:vlr-documentBecameCurrent . setupall:onactivate))))
