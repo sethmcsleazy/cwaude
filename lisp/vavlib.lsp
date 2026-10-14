@@ -3,7 +3,7 @@
 ;;; VAVLIB   Creates block VAV-DESV with every DESV size drawn in plan, one size
 ;;;          per row, 150" apart (size 4 at the origin row). Each size has the
 ;;;          4D straight inlet run, inlet collar, casing, control enclosure,
-;;;          door swing and NEC 208 V / 480 V working clearance, right hand.
+;;;          door swing and NEC working clearance, right hand.
 ;;; Then, in the Block Editor (BEDIT VAV-DESV): add one Visibility parameter
 ;;;          with a state per size, hiding every other size in each state.
 ;;; VAVSTACK Moves every size back onto the insertion point, so all states
@@ -12,8 +12,9 @@
 ;;;
 ;;; Insertion point = where the supply duct meets the inlet collar, on the box
 ;;; centerline; airflow runs along +X; controls on the -Y side (right hand).
-;;; Clearance and door swing are on their own layers so they can be frozen:
-;;;   M-VAV-NEC208, M-VAV-NEC480 (HIDDEN linetype), M-VAV-DOOR.
+;;; The NEC 110.26 working clearance (30" x 36"; 208 V and 480 V Condition 1
+;;; are the same depth, drawn dashed) and the control door swing share layer
+;;; M-VAV-CLR, which does not plot - turn it on or off to show them.
 ;;; The "SIZE xx" label is on M-VAV-NPLT, which doesn't plot.
 ;;; Everything else is on layer 0 and takes the layer the block is inserted on.
 ;;; Drawing units are inches.
@@ -37,8 +38,7 @@
 (setq vavlib:*ctl-len*   18.0     ; control enclosure length along the casing (Titus CL)
       vavlib:*ctl-out*    6.5     ; how far it sticks out from the casing (Titus CW)
       vavlib:*nec-wid*   30.0     ; NEC 110.26 working space width (min 30")
-      vavlib:*nec208*    36.0     ; depth, 0-150 V to ground
-      vavlib:*nec480*    36.0     ; depth, 151-600 V to ground, Condition 1
+      vavlib:*nec-dep*   36.0     ; depth: 208 V, and 480 V Condition 1
       vavlib:*spacing*  150.0)    ; row spacing while the sizes are laid out
 
 (defun vavlib:layer (name color lt plot)
@@ -51,9 +51,13 @@
   (entmake (list '(0 . "LINE") (cons 8 lay) (list 10 x1 y1 0.0) (list 11 x2 y2 0.0))))
 
 (defun vavlib:rect (x1 y1 x2 y2 lay)
-  (entmake (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 lay)
-                 '(100 . "AcDbPolyline") '(90 . 4) '(70 . 1)
-                 (list 10 x1 y1) (list 10 x2 y1) (list 10 x2 y2) (list 10 x1 y2))))
+  (vavlib:rect-lt x1 y1 x2 y2 lay nil))
+
+(defun vavlib:rect-lt (x1 y1 x2 y2 lay lt)
+  (entmake (append (list '(0 . "LWPOLYLINE") '(100 . "AcDbEntity") (cons 8 lay))
+                   (if lt (list (cons 6 lt)))
+                   (list '(100 . "AcDbPolyline") '(90 . 4) '(70 . 1)
+                         (list 10 x1 y1) (list 10 x2 y1) (list 10 x2 y2) (list 10 x1 y2)))))
 
 (defun vavlib:text (x y h str lay)
   (entmake (list '(0 . "TEXT") (cons 8 lay) (list 10 x y 0.0) (list 11 x y 0.0)
@@ -77,15 +81,14 @@
   ;; control enclosure on the right (-Y) side
   (vavlib:rect xe ye (+ xe vavlib:*ctl-len*) (- dy (/ w 2.0)) "0")
   ;; door swing: hinged at the upstream end of the enclosure face, open 90 deg
-  (vavlib:line xe ye xe (- ye vavlib:*ctl-len*) "M-VAV-DOOR")
-  (entmake (list '(0 . "ARC") '(8 . "M-VAV-DOOR") (list 10 xe ye 0.0)
+  (vavlib:line xe ye xe (- ye vavlib:*ctl-len*) "M-VAV-CLR")
+  (entmake (list '(0 . "ARC") '(8 . "M-VAV-CLR") (list 10 xe ye 0.0)
                  (cons 40 vavlib:*ctl-len*) (cons 50 (* 1.5 pi)) (cons 51 (* 2.0 pi))))
   ;; NEC 110.26 working clearance in front of the enclosure
   (setq x1 (- cx (/ (max vavlib:*nec-wid* vavlib:*ctl-len*) 2.0)))
-  (vavlib:rect x1 ye (+ x1 (max vavlib:*nec-wid* vavlib:*ctl-len*)) (- ye vavlib:*nec208*) "M-VAV-NEC208")
-  (vavlib:text cx (- ye (/ vavlib:*nec208* 2.0)) 2.0 "NEC CLEARANCE 208V" "M-VAV-NEC208")
-  (vavlib:rect x1 ye (+ x1 (max vavlib:*nec-wid* vavlib:*ctl-len*)) (- ye vavlib:*nec480*) "M-VAV-NEC480")
-  (vavlib:text cx (- ye (/ vavlib:*nec480* 2.0) 3.0) 2.0 "NEC CLEARANCE 480V" "M-VAV-NEC480"))
+  (vavlib:rect-lt x1 ye (+ x1 (max vavlib:*nec-wid* vavlib:*ctl-len*)) (- ye vavlib:*nec-dep*) "M-VAV-CLR"
+                  (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN"))
+  (vavlib:text cx (- ye (/ vavlib:*nec-dep* 2.0)) 2.0 "NEC CLEARANCE" "M-VAV-CLR"))
 
 (defun c:VAVLIB (/ i lts)
   (vl-load-com)
@@ -96,9 +99,7 @@
       (foreach f '("acad.lin" "acadiso.lin")
         (if (not (tblsearch "LTYPE" "HIDDEN"))
           (vl-catch-all-apply 'vla-Load (list lts "HIDDEN" f))))
-      (vavlib:layer "M-VAV-NEC208" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous") T)
-      (vavlib:layer "M-VAV-NEC480" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous") T)
-      (vavlib:layer "M-VAV-DOOR" 8 "Continuous" T)
+      (vavlib:layer "M-VAV-CLR" 1 "Continuous" nil)        ; NEC clearance + door swing, never plotted
       (vavlib:layer "M-VAV-NPLT" 9 "Continuous" nil)     ; reference labels, never plotted
       (entmake '((0 . "BLOCK") (2 . "VAV-DESV") (70 . 2) (10 0.0 0.0 0.0)))
       ;; one tag for every size, inside the casing of all of them
