@@ -25,7 +25,8 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 
 The AHU and VAV blocks are AutoCAD dynamic blocks you build once in the Block Editor (no LISP needed). Step-by-step guides:
 
-- [VAV dynamic block (Titus DESV)](https://claude.ai/code/artifact/071a9728-1a76-4d21-ae41-d5b4b978e37d)
+- **VAV (easy way):** `lisp/vavlib.lsp`. Run `VAVLIB` once to build block VAV-DESV with every Titus DESV size drawn, add a size visibility list in the Block Editor, run `VAVSTACK`, add a flip. Clearance and door swing are on layers M-VAV-NEC208 / M-VAV-NEC480 / M-VAV-DOOR.
+- [VAV dynamic block, parametric version (Titus DESV)](https://claude.ai/code/artifact/071a9728-1a76-4d21-ae41-d5b4b978e37d)
 - [AHU dynamic block (plan + elevation)](https://claude.ai/code/artifact/944f3367-bcb8-4325-af1a-05bae8cfa6ce)
 
 ## Measuring / counting
