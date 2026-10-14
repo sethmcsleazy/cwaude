@@ -29,6 +29,8 @@ The AHU and VAV blocks are AutoCAD dynamic blocks you build once in the Block Ed
 - [VAV dynamic block, parametric version (Titus DESV)](https://claude.ai/code/artifact/071a9728-1a76-4d21-ae41-d5b4b978e37d)
 - [AHU dynamic block (plan + elevation)](https://claude.ai/code/artifact/944f3367-bcb8-4325-af1a-05bae8cfa6ce)
 
+- **Takeoffs:** `lisp/tkolib.lsp`. Run `TKOLIB` once to build block TKO-3300DS with every Crown 3300-DS 45 deg takeoff size (4"-20") in plan, add a size visibility list, run `TKOSTACK`, add a flip.
+
 ## Measuring / counting
 
 | Command | File | What it does |
