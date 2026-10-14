@@ -14,6 +14,7 @@
 ;;; centerline; airflow runs along +X; controls on the -Y side (right hand).
 ;;; Clearance and door swing are on their own layers so they can be frozen:
 ;;;   M-VAV-NEC208, M-VAV-NEC480 (HIDDEN linetype), M-VAV-DOOR.
+;;; The "4D STRAIGHT" and "SIZE xx" labels are on M-VAV-NPLT, which doesn't plot.
 ;;; Everything else is on layer 0 and takes the layer the block is inserted on.
 ;;; Drawing units are inches.
 
@@ -40,10 +41,11 @@
       vavlib:*nec480*    36.0     ; depth, 151-600 V to ground, Condition 1
       vavlib:*spacing*  150.0)    ; row spacing while the sizes are laid out
 
-(defun vavlib:layer (name color lt)
+(defun vavlib:layer (name color lt plot)
   (if (not (tblsearch "LAYER" name))
     (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord")
-                   (cons 2 name) '(70 . 0) (cons 62 color) (cons 6 lt)))))
+                   (cons 2 name) '(70 . 0) (cons 62 color) (cons 6 lt)
+                   (cons 290 (if plot 1 0))))))
 
 (defun vavlib:line (x1 y1 x2 y2 lay)
   (entmake (list '(0 . "LINE") (cons 8 lay) (list 10 x1 y1 0.0) (list 11 x2 y2 0.0))))
@@ -68,11 +70,11 @@
   (vavlib:line (- run) (+ dy (/ d 2.0)) 0.0 (+ dy (/ d 2.0)) "0")
   (vavlib:line (- run) (- dy (/ d 2.0)) 0.0 (- dy (/ d 2.0)) "0")
   (vavlib:line (- run) (+ dy (/ d 2.0)) (- run) (- dy (/ d 2.0)) "0")
-  (vavlib:text (/ run -2.0) (+ dy (/ d 2.0) 2.0) 2.0 "4D STRAIGHT" "0")
+  (vavlib:text (/ run -2.0) (+ dy (/ d 2.0) 2.0) 2.0 "4D STRAIGHT" "M-VAV-NPLT")
   ;; inlet collar and casing
   (vavlib:rect 0.0 (- dy (/ d 2.0)) m (+ dy (/ d 2.0)) "0")
   (vavlib:rect m (- dy (/ w 2.0)) (+ m l) (+ dy (/ w 2.0)) "0")
-  (vavlib:text (+ m (/ l 2.0)) (- dy 2.5) 2.0 (strcat "SIZE " (car z)) "0")
+  (vavlib:text (+ m (/ l 2.0)) (- dy 2.5) 2.0 (strcat "SIZE " (car z)) "M-VAV-NPLT")
   ;; control enclosure on the right (-Y) side
   (vavlib:rect xe ye (+ xe vavlib:*ctl-len*) (- dy (/ w 2.0)) "0")
   ;; door swing: hinged at the upstream end of the enclosure face, open 90 deg
@@ -95,9 +97,10 @@
       (foreach f '("acad.lin" "acadiso.lin")
         (if (not (tblsearch "LTYPE" "HIDDEN"))
           (vl-catch-all-apply 'vla-Load (list lts "HIDDEN" f))))
-      (vavlib:layer "M-VAV-NEC208" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous"))
-      (vavlib:layer "M-VAV-NEC480" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous"))
-      (vavlib:layer "M-VAV-DOOR" 8 "Continuous")
+      (vavlib:layer "M-VAV-NEC208" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous") T)
+      (vavlib:layer "M-VAV-NEC480" 1 (if (tblsearch "LTYPE" "HIDDEN") "HIDDEN" "Continuous") T)
+      (vavlib:layer "M-VAV-DOOR" 8 "Continuous" T)
+      (vavlib:layer "M-VAV-NPLT" 9 "Continuous" nil)     ; reference labels, never plotted
       (entmake '((0 . "BLOCK") (2 . "VAV-DESV") (70 . 2) (10 0.0 0.0 0.0)))
       ;; one tag for every size, inside the casing of all of them
       (entmake (list '(0 . "ATTDEF") '(8 . "0") '(10 12.0 2.5 0.0) '(11 12.0 2.5 0.0)
