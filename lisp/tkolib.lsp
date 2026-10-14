@@ -20,6 +20,10 @@
 ;;;
 ;;; HEIGHT is read as the projection from the duct wall (flange face) to the
 ;;; end of the 5 3/8" collar - confirm against a real fitting.
+;;; The tapered side is a true 45: it rises (opening - dia) and then runs
+;;; straight up the collar side to the top of the shoe. Size 6 is the one
+;;; exception - its shoe is shallower than the 45 needs, so the 45 stops at
+;;; the shoe top and a short ledge closes it to the collar.
 
 ;;   (dia  rect-opening-length-along-duct  height)
 (setq tkolib:*sizes*
@@ -58,18 +62,21 @@
                  (cons 40 h) (cons 1 str) '(72 . 1) '(73 . 2))))
 
 ;; One size with the duct wall at y = dy
-(defun tkolib:size (z dy / d a h b xr xl cl cr ym)
+(defun tkolib:size (z dy / d a h b rise xr xl cl cr ym)
   (setq d  (nth 0 z) a (nth 1 z) h (nth 2 z)
         b  (- h tkolib:*collar*)              ; shoe body depth
+        rise (min (- a d) b)                  ; rise of the 45 deg side
         cr (/ d 2.0)                          ; collar right side (straight side)
         cl (/ d -2.0)                         ; collar left side
         xr cr                                 ; opening right end (flush with collar)
         xl (- cr a)                           ; opening left end (45 deg side)
         ym (+ dy b (/ tkolib:*collar* 2.0)))  ; damper blade position
-  ;; shoe: straight side, tapered side, top of shoe across to the collar
+  ;; shoe: straight side, 45 deg side, then straight up to the collar
   (tkolib:line xr dy cr (+ dy b) "0")
-  (tkolib:line xl dy cl (+ dy b) "0")
-  (tkolib:line cl (+ dy b) cr (+ dy b) "0")
+  (tkolib:line xl dy (+ xl rise) (+ dy rise) "0")
+  (if (< rise b) (tkolib:line cl (+ dy rise) cl (+ dy b) "0"))
+  ;; top of the shoe (a short ledge where the 45 runs out of depth, size 6)
+  (tkolib:line (min cl (+ xl rise)) (+ dy b) cr (+ dy b) "0")
   ;; collar
   (tkolib:rect cl (+ dy b) cr (+ dy h) "0")
   ;; manual volume damper: blade across the collar, handle on the straight side
