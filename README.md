@@ -23,10 +23,10 @@ A collection of AutoLISP routines. Each file in `lisp/` defines one command.
 
 ## Equipment blocks
 
-| Command | File | What it does |
-|---|---|---|
-| `AHU` / `AHUEDIT` | `lisp/ahu.lsp` | Parametric air handling unit. A dialog sets unit length/width/height and the SA, RA and OA openings (location: top, bottom, front, back, left end, right end; length, width and two edge offsets each). Builds a plan block and a separate elevation block per unit tag; `AHUEDIT` on either view changes the values and redraws both everywhere. |
-| `VAV` / `VAVEDIT` | `lisp/vav.lsp` | Parametric single duct VAV box (plan). Dialog: inlet size, left/right hand, NEC 110.26 working clearance (208 V / 480 V, condition 1-3), control door swing. Always draws 4 inlet diameters of straight inlet duct. **The Titus size table at the top of the file must be filled from the current Titus submittal before use.** |
+The AHU and VAV blocks are AutoCAD dynamic blocks you build once in the Block Editor (no LISP needed). Step-by-step guides:
+
+- [VAV dynamic block (Titus DESV)](https://claude.ai/code/artifact/071a9728-1a76-4d21-ae41-d5b4b978e37d)
+- [AHU dynamic block (plan + elevation)](https://claude.ai/code/artifact/944f3367-bcb8-4325-af1a-05bae8cfa6ce)
 
 ## Measuring / counting
 
