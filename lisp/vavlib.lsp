@@ -14,7 +14,7 @@
 ;;; centerline; airflow runs along +X; controls on the -Y side (right hand).
 ;;; Clearance and door swing are on their own layers so they can be frozen:
 ;;;   M-VAV-NEC208, M-VAV-NEC480 (HIDDEN linetype), M-VAV-DOOR.
-;;; The "4D STRAIGHT" and "SIZE xx" labels are on M-VAV-NPLT, which doesn't plot.
+;;; The "SIZE xx" label is on M-VAV-NPLT, which doesn't plot.
 ;;; Everything else is on layer 0 and takes the layer the block is inserted on.
 ;;; Drawing units are inches.
 
@@ -70,7 +70,6 @@
   (vavlib:line (- run) (+ dy (/ d 2.0)) 0.0 (+ dy (/ d 2.0)) "0")
   (vavlib:line (- run) (- dy (/ d 2.0)) 0.0 (- dy (/ d 2.0)) "0")
   (vavlib:line (- run) (+ dy (/ d 2.0)) (- run) (- dy (/ d 2.0)) "0")
-  (vavlib:text (/ run -2.0) (+ dy (/ d 2.0) 2.0) 2.0 "4D STRAIGHT" "M-VAV-NPLT")
   ;; inlet collar and casing
   (vavlib:rect 0.0 (- dy (/ d 2.0)) m (+ dy (/ d 2.0)) "0")
   (vavlib:rect m (- dy (/ w 2.0)) (+ m l) (+ dy (/ w 2.0)) "0")
