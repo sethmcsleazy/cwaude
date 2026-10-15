@@ -4,7 +4,8 @@
 ;;; drawing (created or overwritten there under the same name), then made the
 ;;; current page setup of that drawing's first layout tab only (falling back
 ;;; to -PLOT with "Save changes to page setup" = Yes and "Proceed with plot" =
-;;; No, so nothing is plotted). That only works inside the drawing being changed, so SETUPALL
+;;; No, so nothing is plotted), and that layout is made current and zoomed to
+;;; extents. That only works inside the drawing being changed, so SETUPALL
 ;;; switches through the other open drawings and does it inside each one, then
 ;;; switches back here (like XREFLOAD). Choose "Current" to only update this
 ;;; drawing. Drawings are not saved.
@@ -89,6 +90,12 @@
                                        " - the page setup was not copied into this drawing"
                                        "")))
                            bad))))
+       ;; leave the drawing on its first layout, zoomed to extents in paper space
+       (if first
+         (progn
+           (setvar "CTAB" (vla-get-Name first))
+           (if (/= 1 (getvar "CVPORT")) (command "_.PSPACE"))
+           (command "_.ZOOM" "_E")))
        (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
        (vla-Regen doc 1)                      ; all viewports
        (princ (strcat "\nSETUPALL: "
