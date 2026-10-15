@@ -1,17 +1,17 @@
-;;; SETUPALL - Make a named page setup the current page setup on every layout
-;;;            in every open drawing
+;;; SETUPALL - Make a named page setup the current page setup on the first
+;;;            layout of every open drawing (other layouts are left alone)
 ;;; Pick a page setup from the current drawing. It is copied into each open
 ;;; drawing (created or overwritten there under the same name), then made the
-;;; current page setup of every layout (falling back to -PLOT with "Save
-;;; changes to page setup" = Yes and "Proceed with plot" = No, so nothing is
-;;; plotted). That only works inside the drawing being changed, so SETUPALL
+;;; current page setup of that drawing's first layout tab only (falling back
+;;; to -PLOT with "Save changes to page setup" = Yes and "Proceed with plot" =
+;;; No, so nothing is plotted). That only works inside the drawing being changed, so SETUPALL
 ;;; switches through the other open drawings and does it inside each one, then
 ;;; switches back here (like XREFLOAD). Choose "Current" to only update this
 ;;; drawing. Drawings are not saved.
 
 ;; The per-drawing step, kept as data so it can also be written to a temp file
 ;; and loaded in the other drawings (each drawing has its own LISP variables).
-;; For each layout it copies the page setup's settings onto the layout and
+;; For the drawing's first layout tab it copies the page setup's settings onto the layout and
 ;; writes the page setup name into it (what "Set Current" in the Page Setup
 ;; Manager does). That only works from inside the drawing being changed, which
 ;; is why it runs here and not from the starting drawing. If the layout still
@@ -43,13 +43,18 @@
             (setq out (cons x out)))))
        (entmod (reverse out)))
 
-     (defun setupall:here (name / doc echo n bad lays pc lo try seen p k cur)
+     (defun setupall:here (name / doc echo n bad lays pc lo try seen p k cur first)
        (setq doc  (vla-get-ActiveDocument (vlax-get-acad-object))
              echo (getvar "CMDECHO")
              n    0
              lays (vla-get-Layouts doc)
              pc   (vl-catch-all-apply 'vla-Item (list (vla-get-PlotConfigurations doc) name)))
-       (foreach lay (layoutlist)
+       ;; only the first layout tab (lowest tab order); the others are left alone
+       (vlax-for l lays
+         (if (and (= :vlax-false (vla-get-ModelType l))
+                  (or (not first) (< (vla-get-TabOrder l) (vla-get-TabOrder first))))
+           (setq first l)))
+       (foreach lay (if first (list (vla-get-Name first)))
          (setq lo (vla-Item lays lay) seen nil try 0)
          (if (not (vl-catch-all-error-p pc))
            (vl-catch-all-apply 'setupall:direct (list lo pc name)))
@@ -86,8 +91,10 @@
                            bad))))
        (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
        (vla-Regen doc 1)                      ; all viewports
-       (princ (strcat "\nSETUPALL: \"" name "\" set current on " (itoa n) " of "
-                      (itoa (length (layoutlist))) " layout(s)."))
+       (princ (strcat "\nSETUPALL: "
+                      (cond ((not first) "no layouts in this drawing.")
+                            ((= n 1) (strcat "\"" name "\" set current on layout \"" (vla-get-Name first) "\"."))
+                            (T (strcat "could not set \"" name "\" current on layout \"" (vla-get-Name first) "\".")))))
        n)))
 (eval *setupall-here-src*)
 
