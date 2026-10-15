@@ -90,12 +90,13 @@
                                        " - the page setup was not copied into this drawing"
                                        "")))
                            bad))))
-       ;; leave the drawing on its first layout, zoomed to extents in paper space
+       ;; leave the drawing on its first layout in paper space. The zoom to
+       ;; extents is sent as its own command (setupall:zoomtext) because the
+       ;; layout switch only finishes once this routine has returned.
        (if first
          (progn
            (setvar "CTAB" (vla-get-Name first))
-           (if (/= 1 (getvar "CVPORT")) (command "_.PSPACE"))
-           (command "_.ZOOM" "_E")))
+           (if (/= 1 (getvar "CVPORT")) (command "_.PSPACE"))))
        (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
        (vla-Regen doc 1)                      ; all viewports
        (princ (strcat "\nSETUPALL: "
@@ -115,13 +116,16 @@
     (vla-CopyFrom pc src))
   T)
 
-;; Command-line text that runs the step in the drawing it is sent to, then
-;; switches to the drawing at position idx
+;; Command-line text that zooms to extents once the layout switch has settled
+(setq setupall:zoomtext "_.ZOOM _E ")
+
+;; Command-line text that runs the step in the drawing it is sent to, zooms,
+;; then switches to the drawing at position idx
 (defun setupall:remote (idx)
   (strcat "(progn (vl-load-com) (load " (vl-prin1-to-string *setupall-file*) ")"
-          " (setupall:here " (vl-prin1-to-string *setupall-name*) ")"
-          " (vl-load-com) (vla-Activate (vla-Item (vla-get-Documents (vlax-get-acad-object)) "
-          (itoa idx) ")) (princ))\n"))
+          " (setupall:here " (vl-prin1-to-string *setupall-name*) ") (princ))\n"
+          setupall:zoomtext
+          (setupall:goto idx)))
 
 (defun setupall:goto (idx)
   (strcat "(progn (vl-load-com) (vla-Activate (vla-Item (vla-get-Documents (vlax-get-acad-object)) "
@@ -212,6 +216,7 @@
           (vl-bb-set '*setupall-fail* nil)
           (setq *setupall-count* 1)
           (setupall:here *setupall-name*)
+          (vla-SendCommand doc setupall:zoomtext)  ; runs once SETUPALL ends
           (if (not queue) (setupall:summary))
           (if queue
             (progn
