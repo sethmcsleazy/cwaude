@@ -2,56 +2,93 @@
 ;;;            in every open drawing
 ;;; Pick a page setup from the current drawing. It is copied into each open
 ;;; drawing (created or overwritten there under the same name), then made the
-;;; current page setup of every layout. That last step uses -PLOT with "Save
+;;; current page setup of every layout (falling back to -PLOT with "Save
 ;;; changes to page setup" = Yes and "Proceed with plot" = No, so nothing is
-;;; plotted. A routine can only run commands in its own drawing, so SETUPALL
+;;; plotted). That only works inside the drawing being changed, so SETUPALL
 ;;; switches through the other open drawings and does it inside each one, then
 ;;; switches back here (like XREFLOAD). Choose "Current" to only update this
 ;;; drawing. Drawings are not saved.
 
 ;; The per-drawing step, kept as data so it can also be written to a temp file
 ;; and loaded in the other drawings (each drawing has its own LISP variables).
-;; Each layout is checked afterwards; if the page setup did not take, it is
-;; tried once more, and any layout that still failed is reported (with the
-;; prompts AutoCAD showed) on the session blackboard for the final summary.
+;; For each layout it copies the page setup's settings onto the layout and
+;; writes the page setup name into it (what "Set Current" in the Page Setup
+;; Manager does). That only works from inside the drawing being changed, which
+;; is why it runs here and not from the starting drawing. If the layout still
+;; doesn't show the page setup as current, -PLOT is tried (twice), and any
+;; layout that still failed is reported (with the prompts AutoCAD showed) on
+;; the session blackboard for the final summary.
 (setq *setupall-here-src*
-  '(defun setupall:here (name / echo n bad lays try seen p k cur sub)
-     (setq echo (getvar "CMDECHO") n 0)
-     (setvar "CMDECHO" 1)                    ; prompts must echo for LASTPROMPT
-     (setq lays (vla-get-Layouts (vla-get-ActiveDocument (vlax-get-acad-object))))
-     (foreach lay (layoutlist)
-       (setq try 0 cur nil)
-       (while (and (< try 2) (/= cur name))
-         (setq try (1+ try) seen nil k 0)
-         (command "_.-PLOT" "_N" lay name)
-         ;; answer the rest by reading each prompt, since they vary by plotter
-         (while (and (> (getvar "CMDACTIVE") 0) (< (setq k (1+ k)) 20))
-           (setq p    (strcase (getvar "LASTPROMPT"))
-                 seen (cons (getvar "LASTPROMPT") seen))
-           (cond
-             ((wcmatch p "*SAVE CHANGES*") (command "_Y"))
-             ((wcmatch p "*PROCEED WITH PLOT*") (command "_N"))
-             ((wcmatch p "*WRITE THE PLOT TO A FILE*") (command "_N"))
-             ;; second try: any other Yes/No question (e.g. after a warning) gets Yes
-             ((and (= try 2) (wcmatch p "*`[YES/NO`]*")) (command "_Y"))
-             (T (command ""))))
-         (if (> (getvar "CMDACTIVE") 0) (command))
-         ;; read back the layout's current page setup name
-         (setq cur nil sub nil)
-         (foreach x (entget (vlax-vla-object->ename (vla-Item lays lay)))
-           (if (and (not cur) (= sub "AcDbPlotSettings") (= (car x) 1)) (setq cur (cdr x)))
-           (if (= (car x) 100) (setq sub (cdr x)))))
-       (if (= cur name)
-         (setq n (1+ n))
-         (setq bad (cons (strcat (getvar "DWGNAME") " / " lay " - last prompts: "
-                                 (apply 'strcat (mapcar '(lambda (s) (strcat "[" s "] "))
-                                                        (reverse seen))))
-                         bad))))
-     (setvar "CMDECHO" echo)
-     (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
-     (princ (strcat "\nSETUPALL: \"" name "\" set current on " (itoa n) " of "
-                    (itoa (length (layoutlist))) " layout(s)."))
-     n))
+  '(progn
+     ;; page setup name stored on a LAYOUT object (group 1 of AcDbPlotSettings)
+     (defun setupall:psname (lo / sub res)
+       (foreach x (entget (vlax-vla-object->ename lo))
+         (if (and (not res) (= sub "AcDbPlotSettings") (= (car x) 1)) (setq res (cdr x)))
+         (if (= (car x) 100) (setq sub (cdr x))))
+       res)
+
+     ;; copy the settings onto the layout and write the page setup name
+     (defun setupall:direct (lo pc name / e out sub done)
+       (vla-CopyFrom lo pc)
+       (setq e (vlax-vla-object->ename lo))
+       (foreach x (entget e)
+         (cond
+           ((and (not done) (= sub "AcDbPlotSettings") (= (car x) 1))
+            (setq out (cons (cons 1 name) out) done T))
+           ((and (not done) (= sub "AcDbPlotSettings") (= (car x) 100))
+            ;; no name stored yet - add one at the end of the section
+            (setq out (cons x (cons (cons 1 name) out)) done T sub (cdr x)))
+           (T
+            (if (= (car x) 100) (setq sub (cdr x)))
+            (setq out (cons x out)))))
+       (entmod (reverse out)))
+
+     (defun setupall:here (name / doc echo n bad lays pc lo try seen p k cur)
+       (setq doc  (vla-get-ActiveDocument (vlax-get-acad-object))
+             echo (getvar "CMDECHO")
+             n    0
+             lays (vla-get-Layouts doc)
+             pc   (vl-catch-all-apply 'vla-Item (list (vla-get-PlotConfigurations doc) name)))
+       (foreach lay (layoutlist)
+         (setq lo (vla-Item lays lay) seen nil try 0)
+         (if (not (vl-catch-all-error-p pc))
+           (vl-catch-all-apply 'setupall:direct (list lo pc name)))
+         (setq cur (setupall:psname lo))
+         ;; fallback: -PLOT with "Save changes to page setup" = Yes, nothing plotted
+         (while (and (< try 2) (/= cur name))
+           (setq try (1+ try) seen nil k 0)
+           (setvar "CMDECHO" 1)                ; prompts must echo for LASTPROMPT
+           (command "_.-PLOT" "_N" lay name)
+           ;; answer the rest by reading each prompt, since they vary by plotter
+           (while (and (> (getvar "CMDACTIVE") 0) (< (setq k (1+ k)) 20))
+             (setq p    (strcase (getvar "LASTPROMPT"))
+                   seen (cons (getvar "LASTPROMPT") seen))
+             (cond
+               ((wcmatch p "*SAVE CHANGES*") (command "_Y"))
+               ((wcmatch p "*PROCEED WITH PLOT*") (command "_N"))
+               ((wcmatch p "*WRITE THE PLOT TO A FILE*") (command "_N"))
+               ;; second try: any other Yes/No question (e.g. after a warning) gets Yes
+               ((and (= try 2) (wcmatch p "*`[YES/NO`]*")) (command "_Y"))
+               (T (command ""))))
+           (if (> (getvar "CMDACTIVE") 0) (command))
+           (setvar "CMDECHO" echo)
+           (setq cur (setupall:psname lo)))
+         (if (= cur name)
+           (setq n (1+ n))
+           (setq bad (cons (strcat (getvar "DWGNAME") " / " lay
+                                   (if seen
+                                     (strcat " - last prompts: "
+                                             (apply 'strcat (mapcar '(lambda (s) (strcat "[" s "] "))
+                                                                    (reverse seen))))
+                                     (if (vl-catch-all-error-p pc)
+                                       " - the page setup was not copied into this drawing"
+                                       "")))
+                           bad))))
+       (if bad (vl-bb-set '*setupall-fail* (append (vl-bb-ref '*setupall-fail*) (reverse bad))))
+       (vla-Regen doc 1)                      ; all viewports
+       (princ (strcat "\nSETUPALL: \"" name "\" set current on " (itoa n) " of "
+                      (itoa (length (layoutlist))) " layout(s)."))
+       n)))
 (eval *setupall-here-src*)
 
 ;; Copy the page setup into a drawing (ActiveX works across drawings)
@@ -67,7 +104,7 @@
 ;; Command-line text that runs the step in the drawing it is sent to, then
 ;; switches to the drawing at position idx
 (defun setupall:remote (idx)
-  (strcat "(progn (load " (vl-prin1-to-string *setupall-file*) ")"
+  (strcat "(progn (vl-load-com) (load " (vl-prin1-to-string *setupall-file*) ")"
           " (setupall:here " (vl-prin1-to-string *setupall-name*) ")"
           " (vl-load-com) (vla-Activate (vla-Item (vla-get-Documents (vlax-get-acad-object)) "
           (itoa idx) ")) (princ))\n"))
