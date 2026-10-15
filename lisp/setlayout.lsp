@@ -1,9 +1,9 @@
 ;;; SETLAYOUT - Rename the layout to match the drawing file name
 ;;; Characters that are not allowed in layout names (< > / \ " : ; ? * | , = `)
-;;; are removed. Renames each drawing's current layout tab; if a drawing is on
-;;; the Model tab, its only layout is renamed (if it has more than one, switch
-;;; that drawing to the one you want). Choose "Current" for just this drawing
-;;; or "All" for every open drawing, each named after its own file.
+;;; are removed. Renames each drawing's first layout tab (the leftmost one,
+;;; whichever tab is current); other layouts are left alone. Choose "Current"
+;;; for just this drawing or "All" for every open drawing, each named after
+;;; its own file.
 ;;; Drawings are not saved.
 
 (defun setlayout:clean (str / out c)
@@ -17,7 +17,7 @@
 
 ;; Rename the layout in one drawing (works on any open drawing through
 ;; ActiveX). Returns a message describing what happened.
-(defun setlayout:rename (doc / layouts name target paper existing old res)
+(defun setlayout:rename (doc / layouts name target existing old res)
   (setq layouts (vla-get-Layouts doc)
         name    (setlayout:clean (vl-filename-base (vla-get-Name doc))))
   (cond
@@ -28,16 +28,14 @@
     ((= (strcase name) "MODEL")
      "a layout cannot be named \"Model\"")
     (T
-     (setq target (vla-get-ActiveLayout doc))
-     (if (= :vlax-true (vla-get-ModelType target))
-       (progn
-         (setq target nil)
-         (vlax-for lay layouts
-           (if (= :vlax-false (vla-get-ModelType lay)) (setq paper (cons lay paper))))
-         (if (= 1 (length paper)) (setq target (car paper)))))
+     ;; the first layout tab (lowest tab order), whichever tab is current
+     (vlax-for lay layouts
+       (if (and (= :vlax-false (vla-get-ModelType lay))
+                (or (not target) (< (vla-get-TabOrder lay) (vla-get-TabOrder target))))
+         (setq target lay)))
      (cond
        ((not target)
-        "more than one layout - switch that drawing to the layout tab you want and run SETLAYOUT again")
+        "no layouts in this drawing")
        ((= (vla-get-Name target) name)
         (strcat "layout is already named \"" name "\""))
        ((and (not (vl-catch-all-error-p (setq existing (vl-catch-all-apply 'vla-Item (list layouts name)))))
