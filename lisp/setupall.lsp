@@ -140,10 +140,11 @@
 (defun setupall:onactivate (reactor args / doc hit)
   (setq doc (car args))
   (cond
-    ;; the chain stalled (no switch for a minute) or you came back to the
-    ;; starting drawing early: stop listening instead of acting later
-    ((or (> (- (getvar "MILLISECS") *setupall-time*) 60000)
-         (and *setupall-queue* (equal doc (cdr *setupall-home*))))
+    ;; the chain stalled (no switch for a minute): stop listening instead of
+    ;; acting later. The starting drawing can report becoming current again
+    ;; while the chain is starting up, so that alone doesn't stop it - it is
+    ;; simply ignored until every other drawing is done.
+    ((> (- (getvar "MILLISECS") *setupall-time*) 60000)
      (princ (strcat "\nSETUPALL: stopped before reaching "
                     (apply 'strcat (mapcar '(lambda (x) (strcat (vla-get-Name (cdr x)) " "))
                                            *setupall-queue*))
@@ -159,6 +160,7 @@
                                              (car *setupall-home*)))))
     ((and (null *setupall-queue*) (equal doc (cdr *setupall-home*)))
      (setupall:stop)
+     (vla-SendCommand doc setupall:zoomtext)
      (setupall:summary))))
 
 ;; Final report, including any layouts that did not take the page setup
@@ -216,8 +218,10 @@
           (vl-bb-set '*setupall-fail* nil)
           (setq *setupall-count* 1)
           (setupall:here *setupall-name*)
-          (vla-SendCommand doc setupall:zoomtext)  ; runs once SETUPALL ends
-          (if (not queue) (setupall:summary))
+          (if (not queue)
+            (progn
+              (vla-SendCommand doc setupall:zoomtext)  ; runs once SETUPALL ends
+              (setupall:summary)))
           (if queue
             (progn
               ;; the other drawings load the per-drawing step from a temp file
