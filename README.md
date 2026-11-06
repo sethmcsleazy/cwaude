@@ -1,6 +1,6 @@
 # AutoCAD LISP Routines
 
-A collection of AutoLISP routines. Each file in `lisp/` defines one command. Revit tools (pyRevit) are in `revit/`, see [Revit tools](#revit-tools-pyrevit).
+A collection of AutoLISP routines. Each file in `lisp/` defines one command. Revit tools are in `revit/`, see [Revit tools](#revit-tools-dynamo-no-install).
 
 ## Sheet / drawing management
 
@@ -40,13 +40,24 @@ The AHU and VAV blocks are AutoCAD dynamic blocks you build once in the Block Ed
 | `BLKCOUNT` | `lisp/blkcount.lsp` | Count block references by name (dynamic blocks grouped by effective name, MINSERT arrays count every copy). Choose Select or press Enter for the whole drawing. Named so it doesn't clash with Express Tools `BCOUNT`. |
 | `NUMINC` | `lisp/numinc.lsp` | Click to place incrementing numbers with optional prefix/suffix |
 
-## Revit tools (pyRevit)
+## Revit tools (Dynamo, no install)
 
-| Button | File | What it does |
+These run in **Dynamo**, which comes with Revit (2021 and newer). There's nothing to install and you don't need admin rights.
+
+| Tool | Files | What it does |
 |---|---|---|
-| **Supply Flow** | `revit/CWAUDE.extension/CWAUDE.tab/Mechanical.panel/Supply Flow.pushbutton/script.py` | Select air terminals and click it: totals the Flow of every **Supply Air** terminal in the selection, shown in project airflow units plus CFM and L/s, with a count and a per-type breakdown. Return/exhaust terminals and non-terminals are skipped (and counted in the report). Nothing selected? It asks you to pick air terminals. |
+| **Supply Flow Total** | `revit/dynamo/Supply Flow Total.dyn` (script: `revit/dynamo/supply_flow_total.py`) | Totals the Flow of every **Supply Air** terminal in your Revit selection. A popup shows the count, the total in project airflow units plus CFM and L/s, and a per-type breakdown. Return/exhaust terminals and non-terminals are skipped and counted. Terminals inside selected model groups/assemblies are included, never twice. **Read-only:** it never starts a transaction or sets a value, so it can't change the model. |
 
-**Install:** install [pyRevit](https://github.com/pyrevitlabs/pyRevit), then *pyRevit tab → Settings → Custom Extension Directories → Add* the `revit/` folder and click *Save Settings and Reload*. A **CWAUDE** tab appears with the button.
+**Use it (Dynamo Player, easiest):**
+1. Copy `Supply Flow Total.dyn` anywhere you can write, e.g. `Documents\Dynamo`.
+2. In Revit, select your supply air terminals (a window/crossing selection is fine; return grilles, ducts etc. are ignored).
+3. *Manage* tab → *Dynamo Player* → point it at that folder → click play on **Supply Flow Total**.
+
+**Or in the Dynamo editor:** *Manage* → *Dynamo* → open the `.dyn` → *Run* (the graph is set to Manual run). After you change the selection, flip the **Refresh** toggle and click *Run* again (Dynamo skips nodes whose inputs didn't change).
+
+**If the .dyn won't open** (it was written without a copy of Dynamo to check it against): new graph → add a *Python Script* node (search "Python") → double-click it, delete the sample code, paste all of `supply_flow_total.py` → connect a *Boolean* node to its input and a *Watch* node to its output → *Run*. Save it as a `.dyn` for next time.
+
+**Tests:** `python3 -m unittest discover -s tests/revit -v` runs the script against a strict fake Revit API (Revit 2020-2026 API differences, groups, unconnected terminals, missing flow, 20,000 elements, and checks that nothing in it can write to the model). After editing the script, run `python3 revit/dynamo/build_dyn.py` to rebuild the `.dyn`.
 
 ## Loading
 

@@ -1,0 +1,169 @@
+{
+  "Uuid": "0d419ca2-9109-56af-8a04-897c0418db43",
+  "IsCustomNode": false,
+  "Description": "Totals the airflow of the supply air terminals selected in Revit. Read-only: never changes the model.",
+  "Name": "Supply Flow Total",
+  "ElementResolver": {
+    "ResolutionMap": {}
+  },
+  "Inputs": [],
+  "Outputs": [],
+  "Nodes": [
+    {
+      "ConcreteType": "CoreNodeModels.Input.BoolSelector, CoreNodeModels",
+      "NodeType": "BooleanInputNode",
+      "InputValue": true,
+      "Id": "8d771595429b5c899ddd3cf284f61fd4",
+      "Inputs": [],
+      "Outputs": [
+        {
+          "Id": "68c42a19e6d655f7b03c15aa99a1669a",
+          "Name": "",
+          "Description": "Boolean",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Selection between a true and false."
+    },
+    {
+      "ConcreteType": "PythonNodeModels.PythonNode, PythonNodeModels",
+      "NodeType": "PythonScriptNode",
+      "Code": "# Supply Flow Total - Dynamo Python Script node (Revit 2021 - 2026)\n#\n# Totals the airflow of the SUPPLY air terminals in the current Revit selection\n# and shows the result in a popup (and on the node's OUT port).\n#\n# READ-ONLY: this script never starts a transaction and never sets a parameter,\n# so it cannot change the model. Revit refuses any model change made outside a\n# transaction.\n#\n# - Air terminals whose system classification is Supply Air are counted.\n# - Return/exhaust terminals and anything that isn't an air terminal are\n#   skipped (and counted in the report).\n# - Model groups and assemblies in the selection are opened up, so terminals\n#   inside them are counted.\n# - Flow comes from the terminal's Flow parameter (falls back to its duct\n#   connector's flow) and is shown in the project's airflow units plus CFM\n#   and L/s.\n#\n# IN[0] is an optional refresh toggle. Dynamo skips nodes whose inputs didn't\n# change, so flip the toggle (or use Dynamo Player) to re-run after you change\n# the selection.\n#\n# Works on IronPython 2.7, CPython3 and PythonNet3 engines: no f-strings, and\n# ElementId values are read with .Value (2024+) or .IntegerValue (older).\n\nimport clr\nclr.AddReference(\"RevitAPI\")\nclr.AddReference(\"RevitAPIUI\")\nclr.AddReference(\"RevitServices\")\n\nfrom Autodesk.Revit.DB import (BuiltInCategory, BuiltInParameter, Category,\n                               Domain, Group, AssemblyInstance, UnitFormatUtils)\nfrom Autodesk.Revit.DB.Mechanical import DuctSystemType\nfrom Autodesk.Revit.UI import TaskDialog\nfrom RevitServices.Persistence import DocumentManager\n\nCFS_TO_CFM = 60.0           # Revit stores airflow internally in ft3/s\nCFS_TO_LPS = 28.316846592\nTITLE = \"Supply Air Flow Total\"\n\n\ndef commas(x, decimals):\n    \"\"\"1234.5 -> '1,234.5' (no format-spec commas: not safe on IronPython).\"\"\"\n    s = (\"%.\" + str(decimals) + \"f\") % x\n    sign = \"\"\n    if s.startswith(\"-\"):\n        sign, s = \"-\", s[1:]\n    whole, dot, frac = s.partition(\".\")\n    groups = []\n    while len(whole) > 3:\n        groups.insert(0, whole[-3:])\n        whole = whole[:-3]\n    groups.insert(0, whole)\n    return sign + \",\".join(groups) + dot + frac\n\n\ndef id_value(eid):\n    \"\"\"Integer value of an ElementId on any Revit version.\"\"\"\n    try:\n        return eid.Value            # Revit 2024+ (IntegerValue removed in 2026)\n    except AttributeError:\n        return eid.IntegerValue     # Revit 2023 and earlier\n\n\ndef duct_connectors(el):\n    mep = getattr(el, \"MEPModel\", None)\n    mgr = getattr(mep, \"ConnectorManager\", None) if mep is not None else None\n    if mgr is None:\n        return []\n    found = []\n    for c in mgr.Connectors:\n        try:\n            if c.Domain == Domain.DomainHvac:\n                found.append(c)\n        except Exception:\n            pass\n    return found\n\n\ndef is_supply(el):\n    \"\"\"True if the terminal is on Supply Air (connector first, then parameter).\"\"\"\n    for c in duct_connectors(el):\n        try:\n            st = c.DuctSystemType\n        except Exception:\n            continue\n        if st == DuctSystemType.SupplyAir:\n            return True\n        if st == DuctSystemType.ReturnAir or st == DuctSystemType.ExhaustAir:\n            return False\n    p = el.get_Parameter(BuiltInParameter.RBS_SYSTEM_CLASSIFICATION_PARAM)\n    text = p.AsString() if p is not None else None\n    return \"supply\" in (text or \"\").lower()\n\n\ndef flow_cfs(el):\n    \"\"\"Airflow in Revit internal units (ft3/s).\"\"\"\n    p = el.get_Parameter(BuiltInParameter.RBS_DUCT_FLOW_PARAM)\n    if p is not None and p.HasValue:\n        return p.AsDouble()\n    total = 0.0\n    for c in duct_connectors(el):\n        try:\n            total += c.Flow\n        except Exception:\n            pass\n    return total\n\n\ndef format_flow(doc, cfs):\n    \"\"\"Flow in the project's airflow units, on any Revit version.\"\"\"\n    try:                                            # Revit 2021+\n        from Autodesk.Revit.DB import SpecTypeId\n        return UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.AirFlow,\n                                      cfs, False)\n    except Exception:\n        pass\n    try:                                            # Revit 2020 and earlier\n        from Autodesk.Revit.DB import UnitType\n        return UnitFormatUtils.Format(doc.GetUnits(), UnitType.UT_HVAC_Airflow,\n                                      cfs, False, False)\n    except Exception:\n        pass\n    return commas(cfs * CFS_TO_CFM, 0) + \" CFM\"\n\n\ndef type_name(doc, el):\n    t = doc.GetElement(el.GetTypeId())\n    if t is None:\n        return \"(no type)\"\n    p = t.get_Parameter(BuiltInParameter.SYMBOL_NAME_PARAM)\n    name = (p.AsString() if p is not None else None) or \"(unnamed type)\"\n    fam = getattr(t, \"FamilyName\", None)\n    if fam:\n        return \"{0} : {1}\".format(fam, name)\n    return name\n\n\ndef expand(doc, ids):\n    \"\"\"Elements for the ids, opening up groups/assemblies (no duplicates).\"\"\"\n    out = []\n    seen = set()\n    stack = list(ids)\n    while stack:\n        eid = stack.pop()\n        key = id_value(eid)\n        if key in seen:\n            continue\n        seen.add(key)\n        el = doc.GetElement(eid)\n        if el is None:\n            continue\n        if isinstance(el, Group) or isinstance(el, AssemblyInstance):\n            stack.extend(list(el.GetMemberIds()))\n            continue\n        out.append(el)\n    return out\n\n\ndef supply_flow_report(doc, selected_ids):\n    \"\"\"Returns (report text, total ft3/s, supply terminal count).\"\"\"\n    if not selected_ids:\n        return (\"Nothing is selected.\\n\\nSelect supply air terminals in Revit, \"\n                \"then run this again.\", 0.0, 0)\n\n    cat = Category.GetCategory(doc, BuiltInCategory.OST_DuctTerminal)\n    terminal_cat = id_value(cat.Id) if cat is not None else None\n\n    total = 0.0\n    count = 0\n    not_supply = 0\n    not_terminal = 0\n    by_type = {}            # type name -> [count, ft3/s]\n\n    for el in expand(doc, selected_ids):\n        c = el.Category\n        if c is None or terminal_cat is None or id_value(c.Id) != terminal_cat:\n            not_terminal += 1\n            continue\n        if not is_supply(el):\n            not_supply += 1\n            continue\n        q = flow_cfs(el)\n        total += q\n        count += 1\n        row = by_type.setdefault(type_name(doc, el), [0, 0.0])\n        row[0] += 1\n        row[1] += q\n\n    skipped = []\n    if not_supply:\n        skipped.append(\"{0} return/exhaust terminal(s)\".format(not_supply))\n    if not_terminal:\n        skipped.append(\"{0} non-terminal element(s)\".format(not_terminal))\n\n    if count == 0:\n        lines = [\"No supply air terminals in the selection.\"]\n    else:\n        lines = [\"Supply air terminals: {0}\".format(count),\n                 \"Total flow: {0}\".format(format_flow(doc, total)),\n                 \"({0} CFM  |  {1} L/s)\".format(\n                     commas(total * CFS_TO_CFM, 0), commas(total * CFS_TO_LPS, 1)),\n                 \"\",\n                 \"By type:\"]\n        for name in sorted(by_type):\n            n, q = by_type[name]\n            lines.append(\"  {0} x {1} = {2}\".format(n, name,\n                                                     format_flow(doc, q)))\n    if skipped:\n        lines.append(\"\")\n        lines.append(\"Skipped: \" + \", \".join(skipped))\n    return (\"\\n\".join(lines), total, count)\n\n\n# --- run ---------------------------------------------------------------------\n_doc = DocumentManager.Instance.CurrentDBDocument\n_uidoc = DocumentManager.Instance.CurrentUIApplication.ActiveUIDocument\n_report, _total, _count = supply_flow_report(\n    _doc, list(_uidoc.Selection.GetElementIds()))\nTaskDialog.Show(TITLE, _report)\nOUT = _report\n",
+      "Engine": "CPython3",
+      "VariableInputPorts": true,
+      "Id": "c28b18f247f35d879350e02136dd3a1b",
+      "Inputs": [
+        {
+          "Id": "a33dc82c63625d6fa60331a4ed335324",
+          "Name": "IN[0]",
+          "Description": "Input #0",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "3e1790fbffec59219534d60225f50d6d",
+          "Name": "OUT",
+          "Description": "Result of the python script",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Runs an embedded Python script."
+    },
+    {
+      "ConcreteType": "CoreNodeModels.Watch, CoreNodeModels",
+      "NodeType": "ExtensionNode",
+      "Id": "80aed8ab340850eda9d14bedf93d167c",
+      "Inputs": [
+        {
+          "Id": "fc9c94f4146a5639b6ffd89e319faca9",
+          "Name": "",
+          "Description": "Node to show output from",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Outputs": [
+        {
+          "Id": "46ab25f092495b3aa590954f30bc0b2b",
+          "Name": "",
+          "Description": "Node output",
+          "UsingDefaultValue": false,
+          "Level": 2,
+          "UseLevels": false,
+          "KeepListStructure": false
+        }
+      ],
+      "Replication": "Disabled",
+      "Description": "Visualize the node's output"
+    }
+  ],
+  "Connectors": [
+    {
+      "Start": "68c42a19e6d655f7b03c15aa99a1669a",
+      "End": "a33dc82c63625d6fa60331a4ed335324",
+      "Id": "ae6092447a11547c856bf34f3d225500",
+      "IsHidden": "False"
+    },
+    {
+      "Start": "3e1790fbffec59219534d60225f50d6d",
+      "End": "fc9c94f4146a5639b6ffd89e319faca9",
+      "Id": "6ab3c5164631562c9184f7da3eaea7d4",
+      "IsHidden": "False"
+    }
+  ],
+  "Dependencies": [],
+  "NodeLibraryDependencies": [],
+  "Bindings": [],
+  "View": {
+    "Dynamo": {
+      "ScaleFactor": 1.0,
+      "HasRunWithoutCrash": true,
+      "IsVisibleInDynamoLibrary": true,
+      "Version": "2.10.1.3976",
+      "RunType": "Manual",
+      "RunPeriod": "1000"
+    },
+    "Camera": {
+      "Name": "Background Preview",
+      "EyeX": -17.0,
+      "EyeY": 24.0,
+      "EyeZ": 50.0,
+      "LookX": 12.0,
+      "LookY": -13.0,
+      "LookZ": -58.0,
+      "UpX": 0.0,
+      "UpY": 1.0,
+      "UpZ": 0.0
+    },
+    "NodeViews": [
+      {
+        "ShowGeometry": true,
+        "Name": "Refresh (flip to re-run)",
+        "Id": "8d771595429b5c899ddd3cf284f61fd4",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 0.0,
+        "Y": 0.0
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Supply Flow Total",
+        "Id": "c28b18f247f35d879350e02136dd3a1b",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 250.0,
+        "Y": 0.0
+      },
+      {
+        "ShowGeometry": true,
+        "Name": "Result",
+        "Id": "80aed8ab340850eda9d14bedf93d167c",
+        "IsSetAsInput": false,
+        "IsSetAsOutput": false,
+        "Excluded": false,
+        "X": 500.0,
+        "Y": 0.0
+      }
+    ],
+    "Annotations": [],
+    "X": 0.0,
+    "Y": 0.0,
+    "Zoom": 1.0
+  }
+}
