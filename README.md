@@ -1,6 +1,6 @@
 # AutoCAD LISP Routines
 
-A collection of AutoLISP routines. Each file in `lisp/` defines one command.
+A collection of AutoLISP routines. Each file in `lisp/` defines one command. Revit tools (pyRevit) are in `revit/`, see [Revit tools](#revit-tools-pyrevit).
 
 ## Sheet / drawing management
 
@@ -39,6 +39,14 @@ The AHU and VAV blocks are AutoCAD dynamic blocks you build once in the Block Ed
 | `TAREA` | `lisp/tarea.lsp` | Total area of selected closed polylines, circles, ellipses, splines, regions, hatches (open curves skipped; sq ft shown in Architectural/Engineering units) |
 | `BLKCOUNT` | `lisp/blkcount.lsp` | Count block references by name (dynamic blocks grouped by effective name, MINSERT arrays count every copy). Choose Select or press Enter for the whole drawing. Named so it doesn't clash with Express Tools `BCOUNT`. |
 | `NUMINC` | `lisp/numinc.lsp` | Click to place incrementing numbers with optional prefix/suffix |
+
+## Revit tools (pyRevit)
+
+| Button | File | What it does |
+|---|---|---|
+| **Supply Flow** | `revit/CWAUDE.extension/CWAUDE.tab/Mechanical.panel/Supply Flow.pushbutton/script.py` | Select air terminals and click it: totals the Flow of every **Supply Air** terminal in the selection, shown in project airflow units plus CFM and L/s, with a count and a per-type breakdown. Return/exhaust terminals and non-terminals are skipped (and counted in the report). Nothing selected? It asks you to pick air terminals. |
+
+**Install:** install [pyRevit](https://github.com/pyrevitlabs/pyRevit), then *pyRevit tab → Settings → Custom Extension Directories → Add* the `revit/` folder and click *Save Settings and Reload*. A **CWAUDE** tab appears with the button.
 
 ## Loading
 

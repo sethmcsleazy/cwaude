@@ -1,0 +1,6 @@
+title: Supply Flow
+tooltip: >-
+  Totals the airflow of the selected supply air terminals (diffusers, grilles,
+  registers). Return/exhaust terminals and non-terminals in the selection are
+  skipped. If nothing is selected, you're asked to pick air terminals.
+author: cwaude
